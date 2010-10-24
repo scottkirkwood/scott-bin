@@ -1,0 +1,14 @@
+professorfizzwizzle
+processing.*/
+.tunnel
+google_appengine/
+arduino-..../
+android-sdk-linux_86/
+.pyc$
+.zip$
+wcd.(go|exec)
+apt-selections.txt
+backup-list.txt
+cron-jobs.txt
+passwords.*
+

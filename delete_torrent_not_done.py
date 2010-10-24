@@ -45,7 +45,7 @@ def SaveFile(to_delete):
   fo.close()
   print 'The files were saved to %s' % fname
   print 'Run:'
-  print 'xargs -a %s -d \\n rm' % fname
+  print 'xargs -a %s -d \'\\\\n\' rm' % fname
   print 'To delete them after looking at the file'
 
 
