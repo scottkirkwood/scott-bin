@@ -9,7 +9,9 @@ import os
 import re
 import subprocess
 import sys
+import stat
 import threading
+import time
 
 LOGFILE = '%s/import-photos.log' % (os.path.dirname(__file__))
 TODIR = '~/Pictures'
@@ -36,7 +38,7 @@ class OutputWindow:
 
         # Sets the border width of the window.
         self.window.set_border_width(10)
-        self.window.resize(600, 700)
+        self.window.resize(500, 700)
 
         self.button = gtk.Button('Move Files')
 
@@ -58,6 +60,8 @@ class OutputWindow:
 
         self.window.add(vbox)
         self.window.show_all()
+        self.window.set_default(self.button)
+        self.window.set_focus(self.button)
         self.ShowIntro()
 
     def OnButton(self, widget, data=None):
@@ -65,13 +69,22 @@ class OutputWindow:
         thr = threading.Thread(target=self.MoveFiles)
         thr.start()
 
+    def MoveFile(self, fname):
+        mtime = os.stat(os.path.join(self.fromdir, fname)).st_mtime
+        folder = os.path.join(self.todir, time.strftime("%Y/%m/%d",
+            (time.localtime(mtime))))
+        self.LogLine('%s - %s\n' % (fname, folder))
+        destfile = os.path.join(folder, fname)
+
     def MoveFiles(self):
         self.LogLine('Starting...\n')
+        count = 0
         for fname in os.listdir(self.fromdir):
-            self.LogLine('%s\n' % fname)
+            self.MoveFile(fname)
+            count += 1
         self.LogLine('Eject media.\n')
         UnmountMedia(self.fromdir)
-        self.LogLine('Done.\n')
+        self._LogLine('%d files copied to %r\n' % (count, self.todir))
 
     def ShowIntro(self):
         self._LogLine('Scott\'s Image Copying Program\n\n')
