@@ -77,6 +77,8 @@ class OutputWindow:
             (time.localtime(mtime))))
         self.LogLine('%s - %s\n' % (fname, folder))
         dest_file = os.path.join(folder, fname)
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
         shutil.move(from_file, dest_file)
 
     def MoveFiles(self):
