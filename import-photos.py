@@ -2,14 +2,15 @@
 
 import pygtk
 pygtk.require('2.0')
-import gtk
 import gobject
+import gtk
 import logging
 import os
 import re
+import shutil
+import stat
 import subprocess
 import sys
-import stat
 import threading
 import time
 
@@ -70,11 +71,13 @@ class OutputWindow:
         thr.start()
 
     def MoveFile(self, fname):
-        mtime = os.stat(os.path.join(self.fromdir, fname)).st_mtime
+        from_file = os.path.join(self.fromdir, fname)
+        mtime = os.stat(from_file).st_mtime
         folder = os.path.join(self.todir, time.strftime("%Y/%m/%d",
             (time.localtime(mtime))))
         self.LogLine('%s - %s\n' % (fname, folder))
-        destfile = os.path.join(folder, fname)
+        dest_file = os.path.join(folder, fname)
+        shutil.move(from_file, dest_file)
 
     def MoveFiles(self):
         self.LogLine('Starting...\n')
