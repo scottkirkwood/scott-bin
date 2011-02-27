@@ -1,4 +1,22 @@
 #!/usr/bin/python
+"""
+Import photographs from SD media when mounted.
+Opens up a dialog with PyGTK to show you where it's
+going to put the images, ordered by date.
+
+Some Features:
+- Checks for .cr2 and identical .jpg files and copies only the .cr2 version and
+  removes the (duplicate) .jpg version.
+- Unmounts the drive after copying so you can just remove the media without
+  hunting for the unmount drive menu entry.
+- Copies also any other media found (like videos).
+- Moves files one at a time, deletes source only after copied successfully.
+
+
+TODO:
+- Would be nice to make sense of parties that go over midnight, and keep on one
+  date only.
+"""
 
 import pygtk
 pygtk.require('2.0')
@@ -17,6 +35,7 @@ import time
 LOGFILE = '%s/import-photos.log' % (os.path.dirname(__file__))
 TODIR = '~/Pictures'
 MEDIA = '/media'
+DIR_FORMAT = '%Y/%m/%d'  # ex. 2011/12/01
 
 class FileInfo:
     """Information about a file or two."""
@@ -29,13 +48,36 @@ class FileInfo:
         return os.path.splitext(self.original_name.lower())[0]
 
     def SetDupe(self, dupe_name):
-        """We want .cr2 instead of .jpg"""
+        """We want .cr2 instead of .jpg.
+        Return:
+            True if it's dupe, False otherwise.
+        """
         new_root, new_ext = os.path.splitext(dupe_name.lower())
         old_root, old_ext = os.path.splitext(self.original_name.lower())
         if new_ext == '.jpg':
             self.dupe = dupe_name
+            return True
         elif old_ext == '.jpg':
-            self
+            self.dupe = self.original_name
+            self.original_name = dupe_name
+            return True
+        return False
+
+
+    def MoveFile(self, dest_dir, log):
+        from_file = os.path.join(self.from_dir, self.original_name)
+        mtime = os.stat(from_file).st_mtime
+        folder = os.path.join(dest_dir, time.strftime(DIR_FORMAT,
+            (time.localtime(mtime))))
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+        dest_file = os.path.join(folder, self.original_name.lower())
+        log('%s\n' % dest_file)
+        shutil.move(from_file, dest_file)
+        if self.dupe:
+            dupe_name = os.path.join(self.from_dir, self.dupe)
+            log('Deleting %s\n' % dupe_name)
+            os.unlink(dupe_name)
 
 
 class OutputWindow:
@@ -93,17 +135,6 @@ class OutputWindow:
     def OnClose(self, widget, data=None):
         self.destroy(widget)
 
-    def MoveFile(self, fname):
-        from_file = os.path.join(self.fromdir, fname)
-        mtime = os.stat(from_file).st_mtime
-        folder = os.path.join(self.todir, time.strftime("%Y/%m/%d",
-            (time.localtime(mtime))))
-        self.LogLine('%s - %s\n' % (fname, folder))
-        if not os.path.isdir(folder):
-            os.makedirs(folder)
-        dest_file = os.path.join(folder, fname.lower())
-        shutil.move(from_file, dest_file)
-
     def SetCloseButton(self):
         self.button.set_label('Close')
         self.button.disconnect(self.close_button_handler_id)
@@ -122,16 +153,19 @@ class OutputWindow:
             fi = FileInfo(self.fromdir, fname)
             cname = fi.ComparableName()
             if cname in fmap:
-                if not fmap[cname].SetDupe(self.fromdir, fname):
+                if not fmap[cname].SetDupe(fname):
                     fmap[cname] = fi
                     files.append(fi)
             else:
                 fmap[cname] = fi
                 files.append(fi)
         self.LogLine('Starting...\n')
+        for fi in files:
+            fi.MoveFile(self.todir, self.LogLine)
 
-        #UnmountMedia(self.fromdir)
-        self._LogLine('%d files copied to %r\n' % (count, self.todir))
+        self.LogLine('Eject media.\n')
+        UnmountMedia(self.fromdir)
+        self._LogLine('%d files copied to %r\n' % (len(files), self.todir))
         self.SetCloseButton()
 
     def ShowIntro(self):
@@ -176,7 +210,6 @@ def _DcimSubdir(dirname):
     return None
 
 def UnmountMedia(media):
-    self.LogLine('Eject media.\n')
     re_toptwo = re.compile(r'(/[^/]+/[^/]+)')
     grps = re_toptwo.search(media)
     if not grps:
