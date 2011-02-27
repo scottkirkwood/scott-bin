@@ -46,7 +46,7 @@ class OutputWindow:
         # When the button receives the 'clicked' signal, it will call the
         # function hello() passing it None as its argument.  The hello()
         # function is defined above.
-        self.button.connect('clicked', self.OnButton)
+        self.close_button_handler_id = self.button.connect('clicked', self.OnButton)
 
         sw = gtk.ScrolledWindow()
         sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
@@ -70,6 +70,9 @@ class OutputWindow:
         thr = threading.Thread(target=self.MoveFiles)
         thr.start()
 
+    def OnClose(self, widget, data=None):
+        self.destroy(widget)
+
     def MoveFile(self, fname):
         from_file = os.path.join(self.fromdir, fname)
         mtime = os.stat(from_file).st_mtime
@@ -79,9 +82,20 @@ class OutputWindow:
         dest_file = os.path.join(folder, fname)
         if not os.path.isdir(folder):
             os.makedirs(folder)
-        shutil.move(from_file, dest_file)
+        #shutil.move(from_file, dest_file)
+
+    def SetCloseButton(self):
+        self.button.set_label('Close')
+        self.button.disconnect(self.close_button_handler_id)
+        self.button.connect('clicked', self.OnClose)
+        self.button.set_sensitive(True)
+        self.window.set_focus(self.button)
 
     def MoveFiles(self):
+        if not self.fromdir:
+            self.LogLine('No folder to copy from')
+            self.SetCloseButton()
+            return
         self.LogLine('Starting...\n')
         count = 0
         for fname in os.listdir(self.fromdir):
@@ -90,6 +104,7 @@ class OutputWindow:
         self.LogLine('Eject media.\n')
         UnmountMedia(self.fromdir)
         self._LogLine('%d files copied to %r\n' % (count, self.todir))
+        self.SetCloseButton()
 
     def ShowIntro(self):
         self._LogLine('Scott\'s Image Copying Program\n\n')
