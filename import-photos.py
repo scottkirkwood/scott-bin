@@ -82,7 +82,7 @@ class OutputWindow:
         dest_file = os.path.join(folder, fname)
         if not os.path.isdir(folder):
             os.makedirs(folder)
-        #shutil.move(from_file, dest_file)
+        shutil.move(from_file, dest_file)
 
     def SetCloseButton(self):
         self.button.set_label('Close')
