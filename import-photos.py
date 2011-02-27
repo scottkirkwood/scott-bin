@@ -18,6 +18,26 @@ LOGFILE = '%s/import-photos.log' % (os.path.dirname(__file__))
 TODIR = '~/Pictures'
 MEDIA = '/media'
 
+class FileInfo:
+    """Information about a file or two."""
+    def __init__(self, from_dir, from_name):
+        self.from_dir = from_dir
+        self.original_name = from_name
+        self.dupe = None
+
+    def ComparableName(self):
+        return os.path.splitext(self.original_name.lower())[0]
+
+    def SetDupe(self, dupe_name):
+        """We want .cr2 instead of .jpg"""
+        new_root, new_ext = os.path.splitext(dupe_name.lower())
+        old_root, old_ext = os.path.splitext(self.original_name.lower())
+        if new_ext == '.jpg':
+            self.dupe = dupe_name
+        elif old_ext == '.jpg':
+            self
+
+
 class OutputWindow:
     def delete_event(self, widget, event, data=None):
         # Change FALSE to TRUE and the main window will not be destroyed
@@ -79,9 +99,9 @@ class OutputWindow:
         folder = os.path.join(self.todir, time.strftime("%Y/%m/%d",
             (time.localtime(mtime))))
         self.LogLine('%s - %s\n' % (fname, folder))
-        dest_file = os.path.join(folder, fname)
         if not os.path.isdir(folder):
             os.makedirs(folder)
+        dest_file = os.path.join(folder, fname.lower())
         shutil.move(from_file, dest_file)
 
     def SetCloseButton(self):
@@ -96,13 +116,21 @@ class OutputWindow:
             self.LogLine('No folder to copy from')
             self.SetCloseButton()
             return
-        self.LogLine('Starting...\n')
-        count = 0
+        files = []
+        fmap = {}
         for fname in os.listdir(self.fromdir):
-            self.MoveFile(fname)
-            count += 1
-        self.LogLine('Eject media.\n')
-        UnmountMedia(self.fromdir)
+            fi = FileInfo(self.fromdir, fname)
+            cname = fi.ComparableName()
+            if cname in fmap:
+                if not fmap[cname].SetDupe(self.fromdir, fname):
+                    fmap[cname] = fi
+                    files.append(fi)
+            else:
+                fmap[cname] = fi
+                files.append(fi)
+        self.LogLine('Starting...\n')
+
+        #UnmountMedia(self.fromdir)
         self._LogLine('%d files copied to %r\n' % (count, self.todir))
         self.SetCloseButton()
 
@@ -148,6 +176,7 @@ def _DcimSubdir(dirname):
     return None
 
 def UnmountMedia(media):
+    self.LogLine('Eject media.\n')
     re_toptwo = re.compile(r'(/[^/]+/[^/]+)')
     grps = re_toptwo.search(media)
     if not grps:
