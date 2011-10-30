@@ -7,30 +7,35 @@ from twisted.internet import reactor
 from deluge.log import setupLogger
 
 import re
-import sys
 import time
 import os.path
 import optparse
 
 class Deluge:
-    def __init__(self, watched_path, fnames, orphans):
+    def __init__(self, options, fnames):
         setupLogger()
         self._deluge = client.connect()
         self._deluge.addCallback(self.on_connect_success)
         self._deluge.addErrback(self.on_error)
-        self.watched_path = watched_path
+        self.watched_path = self.ensure_exists(options['watched-local'])
         self.fnames = fnames
         self.re_fnames = []
         for fname in fnames:
-          self.re_fnames.append(re.compile(fname, re.IGNORECASE))
+            self.re_fnames.append(re.compile(fname, re.IGNORECASE))
         self.to_move = []
-        self.orphans = orphans
+        self.to_remove = []
+        self.options = options
         self.finish_location = None
 
     def on_get_config_value(self, value, key):
         if key == 'move_completed_path':
             self.finish_location = value
         #print "%s: %s" % (key, value)
+
+    def ensure_exists(self, directory):
+        if not os.path.isdir(directory):
+            os.mkdirs(directory)
+        return directory
 
     def done(self):
         # Disconnect from the daemon once we've got what we needed
@@ -59,6 +64,26 @@ class Deluge:
         elif not found:
             if not found_one:
                 print '%s not found' % ', '.join(self.fnames)
+            self.done()
+        else:
+            print 'Found %d matches for %s' % (len(found), ', '.join(self.fnames))
+            self.done()
+
+    def on_get_torrents_remove_torrrent(self, torrents):
+        found = []
+        found_one = False
+        for hashval, torrent_info in torrents.iteritems():
+            if torrent_info['progress'] == 100.0:
+                for file_info in torrent_info['files']:
+                    fname = file_info['path']
+                    for re_fname in self.re_fnames:
+                        if re_fname.search(fname):
+                            found.append((hashval, fname))
+        if len(found) == len(self.fnames):
+            self.to_remove = found[:]
+            self.remove_torrent()
+        elif not found:
+            print '%s not found' % ', '.join(self.fnames)
             self.done()
         else:
             print 'Found %d matches for %s' % (len(found), ', '.join(self.fnames))
@@ -99,7 +124,7 @@ class Deluge:
 
         self.done()
 
-    def on_move_storage(self, info):
+    def on_move_storage(self, unused_info):
         if self.to_move:
             self.move_storage()
         else:
@@ -109,7 +134,19 @@ class Deluge:
     def move_storage(self):
         hash_val, fname = self.to_move.pop()
         print 'Moving %s to %s' % (fname, self.watched_path)
-        client.core.move_storage([hash_val],self.watched_path).addCallback(self.on_move_storage)
+        client.core.move_storage([hash_val], self.watched_path).addCallback(self.on_move_storage)
+
+    def on_remove_torrent(self, unused_info):
+        if self.to_remove:
+            self.remove_torrent()
+        else:
+            time.sleep(1)
+            self.done()
+
+    def remove_torrent(self):
+        hash_val, fname = self.to_remove.pop()
+        print 'Removing torrent and data %s' % (fname)
+        client.core.remove_torrent(hash_val, remove_data=True).addCallback(self.on_remove_torrent)
 
     # We create a callback function to be called upon a successful connection
     def on_connect_success(self, result):
@@ -117,13 +154,16 @@ class Deluge:
         client.core.get_config_value("move_completed_path").addCallback(self.on_get_config_value, "move_completed_path")
         filters = {}
         cols = ['files', 'progress', 'save_path']
-        if self.orphans:
-            client.core.get_torrents_status(filters, cols).addCallback(self.on_get_torrents_orphans)
+        callback = None
+        if self.options['orphans']:
+            callback = self.on_get_torrents_orphans
+        elif self.fnames and self.options['remove']:
+            callback = self.on_get_torrents_remove_torrrent
         elif self.fnames:
-            client.core.get_torrents_status(filters, cols).addCallback(self.on_get_torrents_move_storage)
+            callback = self.on_get_torrents_move_storage
         else:
-            client.core.get_torrents_status(filters, cols).addCallback(self.on_get_torrents_list)
-
+            callback = self.on_get_torrents_list
+        client.core.get_torrents_status(filters, cols).addCallback(callback)
 
     def on_error(self, result):
         print 'Error occurred'
@@ -134,8 +174,17 @@ if __name__ == '__main__':
     parser.add_option(
         '-o', '--orphans', dest='orphans', action='store_true',
         help='Files that don\'t belong')
+    parser.add_option(
+        '-r', '--rm', dest='remove', action='store_true',
+        help='Remove the torrent, move to /media../watched or /media/..towatch')
     options, args = parser.parse_args()
-
-    d = Deluge(os.path.expanduser('~/finished/watched'), args, options.orphans)
+    options = {
+            'watched-local': os.path.expanduser('~/finished/watched'),
+            'orphans': options.orphans,
+            'remove': options.remove
+    }
+    d = Deluge(
+            options,
+            args)
     # Run the twisted main loop to make everything go
     reactor.run()
