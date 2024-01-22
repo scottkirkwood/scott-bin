@@ -1,0 +1,52 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io/ioutil"
+	"regexp"
+)
+
+var (
+	fname = flag.String("f", "beer.html", "Filename")
+)
+
+var (
+	rxLiProduct = regexp.MustCompile(`(?ms)<li class=\s*"js-product-item[^>]+>(.*?)</li>`)
+	rxSku       = regexp.MustCompile(`class=.product__sku.>([^<]+)<`)
+	rxPrice     = regexp.MustCompile(`data-price-amount="([0-9.]+)"`)
+)
+
+func parseProduct(txt string) error {
+	skus := rxSku.FindAllStringSubmatch(txt, 1)
+	sku := skus[1]
+	prices := rxPrice.FindAllStringSubmatch(txt, 1)
+	price := prices[1]
+	fmt.Printf("sku: %s price: %s\n", sku, price)
+	return nil
+}
+func parsePage(txt string) error {
+	for _, product := range rxLiProduct.FindAllStringSubmatch(txt, -1) {
+		parseProduct(product[1])
+	}
+	return nil
+}
+
+func doFile(fname string) error {
+	body, err := ioutil.ReadFile(fname)
+	if err != nil {
+		return err
+	}
+	txt := string(body)
+	fmt.Printf("%s\n", txt[0:80])
+	return parsePage(txt)
+}
+
+func main() {
+	flag.Parse()
+	err := doFile(*fname)
+	if err != nil {
+		fmt.Printf("Err: %v\n", err)
+		return
+	}
+}
