@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"os"
 
-	"resolve"
+	"github.com/scottkirkwood/scott-bin/resolve/resolve"
 )
 
 // The following command will work even for BUILD files that haven't been submitted.
