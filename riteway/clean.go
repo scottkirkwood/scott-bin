@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -23,33 +24,56 @@ var (
 	rxProductId   = regexp.MustCompile(`"product-id-(\d+)"`)
 )
 
-func parseProduct(txt string) error {
-	sku := findOrEmpty(rxSku, txt)
-	id := findOrEmpty(rxProductId, txt)
-	name := cleanWhitespace(findOrEmpty(rxProductName, txt))
-	packSize := cleanWhitespace(findOrEmpty(rxPackSize, txt))
-	price := findOrEmpty(rxPrice, txt)
-	link := findOrEmpty(rxProductLink, txt)
-	fmt.Printf("sku: %s, id: %s, name: %q, pack: %q, price: %s, link: %q\n",
-		sku, id, name, packSize, price, link)
-	return nil
+// Product contains all the parts of a product
+type Product struct {
+	PageName string
+	Sku      string
+	Id       string
+	Name     string
+	PackSize string
+	Price    string
+	Link     string
+}
+
+type Line string
+
+func parseProduct(line Line) Product {
+	return Product{
+		Sku:      line.findOrEmpty(rxSku),
+		Id:       line.findOrEmpty(rxProductId),
+		Name:     cleanWhitespace(line.findOrEmpty(rxProductName)),
+		PackSize: cleanWhitespace(line.findOrEmpty(rxPackSize)),
+		Price:    line.findOrEmpty(rxPrice),
+		Link:     line.findOrEmpty(rxProductLink),
+	}
+}
+
+func (p Product) String() string {
+	return fmt.Sprintf("%s,%s,%s,%q,%q,%s,%q",
+		p.PageName, p.Sku, p.Id, p.Name, p.PackSize, p.Price, p.HtmlLink())
+}
+
+func (p Product) HtmlLink() string {
+	return "https://www.riteway.vg/" + p.Link + ".html"
 }
 
 func cleanWhitespace(txt string) string {
 	return rxWhiteSpace.ReplaceAllString(strings.TrimSpace(txt), " ")
 }
 
-func findOrEmpty(rx *regexp.Regexp, txt string) string {
-	grab := rx.FindAllStringSubmatch(txt, 1)
+func (l Line) findOrEmpty(rx *regexp.Regexp) string {
+	grab := rx.FindAllStringSubmatch(string(l), 1)
 	if len(grab) > 0 {
 		return grab[0][1]
 	}
 	return ""
 }
 
-func parsePage(txt string) error {
+func parsePage(name, txt string) error {
 	for _, product := range rxLiProduct.FindAllStringSubmatch(txt, -1) {
-		parseProduct(product[1])
+		p := parseProduct(Line(product[1]))
+		p.PageName = name
+		fmt.Println(p.String())
 	}
 	return nil
 }
@@ -60,14 +84,21 @@ func doFile(fname string) error {
 		return err
 	}
 	txt := string(body)
-	return parsePage(txt)
+	return parsePage(strings.ReplaceAll(fname, ".html", ""), txt)
 }
 
 func main() {
 	flag.Parse()
-	err := doFile(*fname)
+	files, err := filepath.Glob(`*.html`)
 	if err != nil {
-		fmt.Printf("Err: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 		return
+	}
+	for _, fname := range files {
+		err := doFile(fname)
+		if err != nil {
+			fmt.Printf("Err: %v\n", err)
+			return
+		}
 	}
 }
