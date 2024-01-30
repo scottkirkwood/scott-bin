@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -13,15 +14,35 @@ var (
 )
 
 var (
-	rxCodeBrand = regexp.MustCompile(`^\t(\d+) (.+) $`)
+	rxCodeBrand = regexp.MustCompile(`^\t(\d+ .+)\s+$`)
 	rxDesc      = regexp.MustCompile(`^\t(.+) $`)
 	rxUnit      = regexp.MustCompile(`^\t(\d+) $`)
-	rxSize      = regexp.MustCompile(`^\t(\d+)([A-Z]+) $`)
+	rxSize      = regexp.MustCompile(`^\t(\d+[A-Z]+) $`)
 	rxPrice     = regexp.MustCompile(`^\t[$]([0-9.]+)\s*$`)
+	rxNumVal    = regexp.MustCompile(`(\d+)\s*(.*)`)
+	rxSection   = regexp.MustCompile(`^\s*(` + strings.Join([]string{
+		"BEERS",
+		"HARD CIDER",
+		"CIGARETTES",
+		"MISCELLANEOUS: .*",
+		"MIXERS",
+		"JUICE",
+		"SOFT DRINKS",
+		"ENERGY DRINKS",
+		"SPIRITS - .*",
+		"WATER",
+		"BAG IN BOX WINES",
+		"SAKE",
+		".* - White",
+		".* - Red",
+		".* - Rose",
+	}, "|") + `)$`)
+	rxLink = regexp.MustCompile(`corders@caribbeancellars.com`)
 )
 
 // Product contains all the parts of a product
 type Product struct {
+	Section     string
 	Code        string
 	Brand       string
 	Description string
@@ -38,8 +59,8 @@ type Line struct {
 }
 
 func (p Product) String() string {
-	return fmt.Sprintf("%s,%q,%q,%s,%s,%s,%s,%s",
-		p.Code, p.Brand, p.Description, p.Unit, p.Size, p.SizeUnits, p.BottlePrice, p.CasePrice)
+	return fmt.Sprintf("%q,%s,%q,%q,%s,%s,%s,%s,%s",
+		p.Section, p.Code, p.Brand, p.Description, p.Unit, p.Size, p.SizeUnits, p.BottlePrice, p.CasePrice)
 }
 
 func doFile(fname string) ([]Product, error) {
@@ -52,22 +73,30 @@ func doFile(fname string) ([]Product, error) {
 	}
 
 	ps := []Product{}
+	section := "Beer"
 	for {
-		code, brand := scanner.scanTill2(rxCodeBrand)
-		if code == "" {
+		grabbed, n := scanner.scanTill(rxCodeBrand, rxSection)
+		if n == -1 {
 			break
 		}
-		description := scanner.scanTill(rxDesc)
-		unit := scanner.scanTill(rxUnit)
-		size, units := scanner.scanTill2(rxSize)
+		if n == 2 {
+			section = grabbed
+			continue
+		}
+		code, brand := splitRx2(rxNumVal, grabbed)
+		description, _ := scanner.scanTill(rxDesc)
+		unit, _ := scanner.scanTill(rxUnit)
+		sizeUnits, _ := scanner.scanTill(rxSize)
+		size, units := splitRx2(rxNumVal, sizeUnits)
 		if size == "120" && units == "Z" {
 			// hah, they typed "0Z"
 			size = "12"
 			units = "OZ"
 		}
-		bottlePrice := scanner.scanTill(rxPrice)
-		casePrice := scanner.scanTill(rxPrice)
+		bottlePrice, _ := scanner.scanTill(rxPrice)
+		casePrice, _ := scanner.scanTill(rxPrice)
 		ps = append(ps, Product{
+			Section:     section,
 			Code:        code,
 			Brand:       brand,
 			Description: description,
@@ -102,20 +131,21 @@ func (l *Line) match(rx *regexp.Regexp) bool {
 	return rx.MatchString(l.line)
 }
 
-func (l *Line) scanTill(rx *regexp.Regexp) string {
+func (l *Line) scanTill(rxs ...*regexp.Regexp) (string, int) {
 	for l.Next() {
-		if l.match(rx) {
-			return l.findOrEmpty(rx)
+		for i, rx := range rxs {
+			if l.match(rx) {
+				return l.findOrEmpty(rx), i + 1
+			}
 		}
 	}
-	return ""
+	return "", -1
 }
 
-func (l *Line) scanTill2(rx *regexp.Regexp) (string, string) {
-	for l.Next() {
-		if l.match(rx) {
-			return l.findOrEmpty2(rx)
-		}
+func splitRx2(rx *regexp.Regexp, txt string) (string, string) {
+	grab := rx.FindAllStringSubmatch(txt, 1)
+	if len(grab) > 0 {
+		return grab[0][1], grab[0][2]
 	}
 	return "", ""
 }
@@ -126,14 +156,6 @@ func (l *Line) findOrEmpty(rx *regexp.Regexp) string {
 		return grab[0][1]
 	}
 	return ""
-}
-
-func (l *Line) findOrEmpty2(rx *regexp.Regexp) (string, string) {
-	grab := rx.FindAllStringSubmatch(l.line, 1)
-	if len(grab) > 0 {
-		return grab[0][1], grab[0][2]
-	}
-	return "", ""
 }
 
 func main() {
