@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"html"
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
@@ -20,7 +21,7 @@ var (
 	rxProductName = regexp.MustCompile(`(?ms)product-item-name">[^>]*>\s*(.*?)\s*</a>`)
 	rxWhiteSpace  = regexp.MustCompile(`\s+`)
 	rxProductLink = regexp.MustCompile(`(?ms)"product-item-link".*?https://www.riteway.vg/([^"]+).html"`)
-	rxPackSize    = regexp.MustCompile(`(?ms)<div class="pack-size__container">(.*?)</div>`)
+	rxPackSize    = regexp.MustCompile(`(?ms)pack-size__container">(.*?)</div>`)
 	rxProductId   = regexp.MustCompile(`"product-id-(\d+)"`)
 )
 
@@ -49,8 +50,8 @@ func parseProduct(line Line) Product {
 }
 
 func (p Product) String() string {
-	return fmt.Sprintf("%s,%s,%s,%q,%q,%s,%q",
-		p.PageName, p.Sku, p.Id, p.Name, p.PackSize, p.Price, p.HtmlLink())
+	return fmt.Sprintf("%s,%q,%q,%q,%q,%q,%q",
+		p.PageName, p.PackSize, p.Sku, p.Id, p.Price, p.HtmlLink(), html.UnescapeString(p.Name))
 }
 
 func (p Product) HtmlLink() string {
