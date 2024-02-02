@@ -1,4 +1,6 @@
 // fix-mint fixes the dates of mint transactions
+// Also puts in the parent categories
+// Removes the DEBIT/CREDIT types and just uses minus sign
 package main
 
 import (
@@ -249,6 +251,28 @@ func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categ
 	return nil
 }
 
+// removeTransactionTypeCol removes "Transaction Type" col an updates "Amount" col
+// to the left which is the parent category
+func (s *Sheet) removeTransactionTypeCol(colName string) error {
+	colNameIndex := s.colIndex(colName)
+	transTypeIndex := s.colIndex("Transaction Type")
+	for i, row := range s.rows {
+		if i > 0 {
+			mult := 1
+			if row[transTypeIndex] == "credit" {
+				mult = -1
+			} else if row[transTypeIndex] != "debit" {
+				return fmt.Errorf("expecting debit, got %q", row[transTypeIndex])
+			}
+			if mult == -1 {
+				s.rows[i][colNameIndex] = "-1" + s.rows[i][colNameIndex]
+			}
+		}
+		s.rows[i] = slices.Delete(s.rows[i], transTypeIndex, transTypeIndex+1)
+	}
+	return nil
+}
+
 func initCategories(subCategories []string) Categories {
 	parents := map[string]bool{}
 	children := map[string]string{}
@@ -281,8 +305,13 @@ func main() {
 		fmt.Printf("err %v\n", err)
 		return
 	}
+	if err := sheet.removeTransactionTypeCol("Amount"); err != nil {
+		fmt.Printf("err %v\n", err)
+		return
+	}
+
 	fmt.Printf("%d rows\n", len(sheet.rows))
-	*fname = *fname + ".out"
+	*fname = strings.TrimSuffix(*fname, ".csv") + ".out.csv"
 	fmt.Printf("Exporting %s\n", *fname)
 	if err := sheet.writeFile(*fname); err != nil {
 		fmt.Printf("err %v\n", err)
