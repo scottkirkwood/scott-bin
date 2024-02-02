@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # wol.py
 
 import socket
@@ -18,11 +18,11 @@ def wake_on_lan(macaddress):
  
  # Pad the synchronization stream.
  data = ''.join(['FFFFFFFFFFFF', macaddress * 20])
- send_data = ''
+ send_data = b''
 
  # Split up the hex values and pack.
  for i in range(0, len(data), 2):
-   send_data = ''.join([send_data,
+   send_data = b''.join([send_data,
                         struct.pack('B', int(data[i: i + 2], 16))])
 
  # Broadcast it to the LAN.
@@ -34,9 +34,10 @@ def wake_on_lan(macaddress):
 
 if __name__ == '__main__':
   machines = {
+    'nautica' : '04:D9:F5:F3:E2:2A',
     'pluto' : '00-1A-4D-78-D1-42', 
     'scott' : '00:1F:D0:E3:F2:AF',
   }
-  machine = 'pluto'
-  print 'Waking machine %r' % machine
+  machine = 'nautica'
+  print('Waking machine %r' % machine)
   wake_on_lan(machines[machine])
