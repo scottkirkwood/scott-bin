@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/scottkirkwood/scott-bin/vimedit"
+	"github.com/scottkirkwood/scott-bin/vimedit/vimedit"
 )
 
 var (
