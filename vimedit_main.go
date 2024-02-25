@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strings"
 
-	"github.com/scottkirkwood/scott-bin/vimedit/vimedit"
+	"github.com/scottkirkwood/scott-bin/vimedit"
 )
 
 var (
@@ -12,13 +13,13 @@ var (
 	aaIDFlag      = flag.String("aa_id", "", "Auto Attendant ID")
 	leaveTemp     = flag.Bool("leave", false, "Leave temp file behind")
 	leaveComments = flag.Bool("comments", false, "Leave comment lines behind")
-	cmds          = flag.StringList("cmds", []string{"$"}, "Vim commands to pass (ex. $ goes to end of file")
+	cmds          = flag.String("cmds", "$", "Vim commands (comma sep) to pass (ex. $ goes to end of file)")
 )
 
 func main() {
 	flag.Parse()
 
-	t, err := vimedit.EditText(*txtFlag, *cmds...)
+	t, err := vimedit.EditText(*txtFlag, strings.Split(*cmds, ",")...)
 	defer t.Close()
 
 	t.LeaveTempFile = *leaveTemp
