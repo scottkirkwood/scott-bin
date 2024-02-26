@@ -1,5 +1,5 @@
 // Package vimedit edits a file with vim
-// Has support for removing # and // comments from file
+// Has support for removing comments
 // Knows to check exit code for 0, otherwise leave as is
 package vimedit
 
@@ -17,8 +17,9 @@ type Txt struct {
 	LeaveTempFile bool // Don't delete on Close
 	LeaveComments bool // Don't remove comments
 
-	tempFilename string   // name of tmp file
-	prevText     []string // old text split into lines
+	rxComment    *regexp.Regexp // Compiled CommentRx
+	tempFilename string         // name of tmp file
+	prevText     []string       // old text split into lines
 
 	exitCode int
 	errText  string
@@ -35,6 +36,9 @@ func EditText(txt string, vimCommands ...string) (*Txt, error) {
 		tempFilename: f.Name(),
 		prevText:     strings.Split(txt, "\n"),
 	}
+	if err := t.CompileRx("^#"); err != nil {
+		return t, err
+	}
 	if !t.HadComments() {
 		t.LeaveComments = true
 	}
@@ -45,7 +49,11 @@ func EditText(txt string, vimCommands ...string) (*Txt, error) {
 		return t, err
 	}
 
-	vimPath, err := exec.LookPath("vim")
+	editor := "vim"
+	if os.Getenv("EDITOR") != "" {
+		editor = os.Getenv("EDITOR")
+	}
+	vimPath, err := exec.LookPath(editor)
 	if err != nil {
 		return t, err
 	}
@@ -69,6 +77,12 @@ func EditText(txt string, vimCommands ...string) (*Txt, error) {
 		}
 	}
 	return t, nil
+}
+
+// CompileRx will compile and set your comment regular expression
+func (t *Txt) CompileRx(rx string) (err error) {
+	t.rxComment, err = regexp.Compile(rx)
+	return err
 }
 
 // Close will delete the temporary file, unless LeaveTempFile is set
@@ -129,12 +143,10 @@ func (t *Txt) GetLines() (lines []string, err error) {
 	return t.removeComments(lines), err
 }
 
-var rxComment = regexp.MustCompile(`^(#|//)`)
-
 // HadComments looks at the original txt and sees if it had any comments
 func (t *Txt) HadComments() bool {
 	for _, line := range t.prevText {
-		if rxComment.MatchString(line) {
+		if t.rxComment.MatchString(line) {
 			return true
 		}
 	}
@@ -148,7 +160,7 @@ func (t *Txt) removeComments(lines []string) []string {
 	}
 	newLines := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if !rxComment.MatchString(line) {
+		if !t.rxComment.MatchString(line) {
 			newLines = append(newLines, line)
 		}
 	}
