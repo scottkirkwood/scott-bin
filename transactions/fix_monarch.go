@@ -17,8 +17,10 @@ type Sheet struct {
 }
 
 var (
-	fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-        filterCategoriesFlag = flag.String("filter_categories", "Mortgage,Transfer,Paychecks", "Categories to remove, comma separated")
+	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+	fnameFlag            = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+	removeFirstLastFlag  = flag.Bool("remove_edges", true, "Remove first and last months as they may be incomplete")
+	filterCategoriesFlag = flag.String("filter_categories", "Mortgage,Transfer,Transfers,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 )
 
 type Categories struct {
@@ -26,6 +28,13 @@ type Categories struct {
 	ParentCategories      map[string]bool
 	SubCategoriesToParent map[string]string
 }
+
+const (
+	yyyyMmColumn      = "YYYYMM"
+	dateColumn        = "Date"
+	categoryColumn    = "Category"
+	subcategoryColumn = "Subcategory"
+)
 
 var subCategories = []string{
 	">Income",
@@ -77,8 +86,7 @@ var subCategories = []string{
 	">Children",
 	"Child Activities",
 	"Child Care",
-	"Create Category",
-	"EducationEdit",
+	"Education",
 	"Student Loans",
 	"Education",
 	">Health & Wellness",
@@ -144,41 +152,51 @@ func (s *Sheet) colIndex(colName string) int {
 	return slices.Index(s.rows[0], colName)
 }
 
+// getValue returns the 1's based row for column
+// I.e. the row index of 1 is the first non-header row
+func (s *Sheet) getValue(colName string, row int) string {
+	colIndex := s.colIndex(colName)
+	if colIndex < 0 {
+		return fmt.Sprintf("bad col name %q", colName)
+	}
+	return s.rows[row][colIndex]
+}
+
 // addSubCategories searches `colName` and adds `newColName`
 // to the left which will be the parent category
 func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categories) error {
 	colNameIndex := s.colIndex(colName)
+	newColIndex := colNameIndex + 1
 	if colNameIndex < 0 {
 		return fmt.Errorf("column %q not found", colName)
 	}
 	for i, row := range s.rows {
-		s.rows[i] = slices.Insert(s.rows[i], colNameIndex, "")
+		s.rows[i] = slices.Insert(s.rows[i], colNameIndex+1, "")
 		if i == 0 {
-			s.rows[i][colNameIndex] = colName
-			s.rows[i][colNameIndex+1] = newColName
+			s.rows[i][newColIndex] = newColName
 			continue
 		}
 		category := row[colNameIndex]
 		if category == "" {
-			return fmt.Errorf("Missing category in line %d", i+1)
+			return fmt.Errorf("Missing category in line %d, %d, %#v", i+1, colNameIndex, row)
 		}
 		if subCategories.ParentCategories[category] {
 			s.rows[i][colNameIndex] = category
-			s.rows[i][colNameIndex+1] = ""
+			s.rows[i][newColIndex] = category
 		} else {
 			parent := subCategories.SubCategoriesToParent[category]
 			if parent == "" {
 				return fmt.Errorf("missing parent for category %q", category)
 			}
 			s.rows[i][colNameIndex] = parent
-			s.rows[i][colNameIndex+1] = category
+			s.rows[i][newColIndex] = category
 		}
 	}
 	return nil
 }
 
 // removeRows executes the function on the column passed and removes those rows
-func (s *Sheet) removeRows(colName string, removeFn func(string)bool) error {
+func (s *Sheet) removeRows(colName string, removeFn func(string) bool) error {
 	colNameIndex := s.colIndex(colName)
 	if colNameIndex < 0 {
 		return fmt.Errorf("column %q not found", colName)
@@ -186,13 +204,13 @@ func (s *Sheet) removeRows(colName string, removeFn func(string)bool) error {
 	deleteFn := func(row []string) bool {
 		return removeFn(row[colNameIndex])
 	}
-        s.rows = slices.DeleteFunc(s.rows, deleteFn)
+	s.rows = slices.DeleteFunc(s.rows, deleteFn)
 	return nil
 }
 
 // dateToMonth searches for `colName` and adds `newColName` to the right
 // after applying the function to the string
-func (s *Sheet) mapToNewCol(colName, newColName string, mapFn func(string)string) error {
+func (s *Sheet) mapToNewCol(colName, newColName string, mapFn func(string) string) error {
 	colNameIndex := s.colIndex(colName)
 	if colNameIndex < 0 {
 		return fmt.Errorf("column %q not found", colName)
@@ -210,6 +228,14 @@ func (s *Sheet) mapToNewCol(colName, newColName string, mapFn func(string)string
 		s.rows[i][colNameIndex+1] = newVal
 	}
 	return nil
+}
+
+func (s *Sheet) removeFirstAndLastMonths() error {
+	startMonth := s.getValue(yyyyMmColumn, 1)
+	lastMonth := s.getValue(yyyyMmColumn, len(s.rows)-1)
+	return s.removeRows(yyyyMmColumn, func(txt string) bool {
+		return txt == startMonth || txt == lastMonth
+	})
 }
 
 func mapDateToYYYYMM(txt string) string {
@@ -240,6 +266,9 @@ func initCategories(subCategories []string) Categories {
 
 func main() {
 	flag.Parse()
+	filterCategories := strings.Split(*filterCategoriesFlag, ",")
+	categories := initCategories(subCategories)
+
 	fmt.Printf("Importing %s\n", *fnameFlag)
 	sheet, err := importFile(*fnameFlag)
 	if err != nil {
@@ -247,21 +276,26 @@ func main() {
 		return
 	}
 
-	filterCategories := strings.Split(*filterCategoriesFlag, ",")
-	removeRowFn := func (txt string) bool {
+	if err := sheet.mapToNewCol(dateColumn, yyyyMmColumn, mapDateToYYYYMM); err != nil {
+		fmt.Printf("mapToNewCol err %v\n", err)
+		return
+	}
+	if *removeFirstLastFlag {
+		if err := sheet.removeFirstAndLastMonths(); err != nil {
+			fmt.Printf("removeFirstAndLastMonths err %v\n", err)
+			return
+		}
+	}
+	if err := sheet.addSubCategories(categoryColumn, subcategoryColumn, categories); err != nil {
+		fmt.Printf("addSubCategories err %v\n", err)
+		return
+	}
+
+	removeRowFn := func(txt string) bool {
 		return slices.Contains(filterCategories, txt)
 	}
-	if err := sheet.removeRows("Category", removeRowFn); err != nil {
-		fmt.Printf("err %v\n", err)
-		return
-	}
-	categories := initCategories(subCategories)
-	if err := sheet.addSubCategories("Category", "Subcategory", categories); err != nil {
-		fmt.Printf("err %v\n", err)
-		return
-	}
-	if err := sheet.mapToNewCol("Date", "YYYYMM", mapDateToYYYYMM); err != nil {
-		fmt.Printf("err %v\n", err)
+	if err := sheet.removeRows(categoryColumn, removeRowFn); err != nil {
+		fmt.Printf("removeRows err %v\n", err)
 		return
 	}
 
@@ -269,7 +303,7 @@ func main() {
 	outFile := strings.TrimSuffix(*fnameFlag, ".csv") + ".out.csv"
 	fmt.Printf("Exporting %s\n", outFile)
 	if err := sheet.writeFile(outFile); err != nil {
-		fmt.Printf("err %v\n", err)
+		fmt.Printf("writeFile err %v\n", err)
 		return
 	}
 }
