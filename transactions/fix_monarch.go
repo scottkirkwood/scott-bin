@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -17,8 +16,10 @@ type Sheet struct {
 	rows  [][]string
 }
 
-var fname = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-var rxDate = regexp.MustCompile(`(\d+)/(\d+)/(\d+)`)
+var (
+	fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+        filterCategoriesFlag = flag.String("filter_categories", "Mortgage,Transfer,Paychecks", "Categories to remove, comma separated")
+)
 
 type Categories struct {
 	db                    []string
@@ -176,6 +177,19 @@ func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categ
 	return nil
 }
 
+// removeRows executes the function on the column passed and removes those rows
+func (s *Sheet) removeRows(colName string, removeFn func(string)bool) error {
+	colNameIndex := s.colIndex(colName)
+	if colNameIndex < 0 {
+		return fmt.Errorf("column %q not found", colName)
+	}
+	deleteFn := func(row []string) bool {
+		return removeFn(row[colNameIndex])
+	}
+        s.rows = slices.DeleteFunc(s.rows, deleteFn)
+	return nil
+}
+
 // dateToMonth searches for `colName` and adds `newColName` to the right
 // after applying the function to the string
 func (s *Sheet) mapToNewCol(colName, newColName string, mapFn func(string)string) error {
@@ -225,9 +239,19 @@ func initCategories(subCategories []string) Categories {
 }
 
 func main() {
-	fmt.Printf("Importing %s\n", *fname)
-	sheet, err := importFile(*fname)
+	flag.Parse()
+	fmt.Printf("Importing %s\n", *fnameFlag)
+	sheet, err := importFile(*fnameFlag)
 	if err != nil {
+		fmt.Printf("err %v\n", err)
+		return
+	}
+
+	filterCategories := strings.Split(*filterCategoriesFlag, ",")
+	removeRowFn := func (txt string) bool {
+		return slices.Contains(filterCategories, txt)
+	}
+	if err := sheet.removeRows("Category", removeRowFn); err != nil {
 		fmt.Printf("err %v\n", err)
 		return
 	}
@@ -242,9 +266,9 @@ func main() {
 	}
 
 	fmt.Printf("%d rows\n", len(sheet.rows))
-	*fname = strings.TrimSuffix(*fname, ".csv") + ".out.csv"
-	fmt.Printf("Exporting %s\n", *fname)
-	if err := sheet.writeFile(*fname); err != nil {
+	outFile := strings.TrimSuffix(*fnameFlag, ".csv") + ".out.csv"
+	fmt.Printf("Exporting %s\n", outFile)
+	if err := sheet.writeFile(outFile); err != nil {
 		fmt.Printf("err %v\n", err)
 		return
 	}
