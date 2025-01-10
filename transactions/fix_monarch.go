@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ type Sheet struct {
 var (
 	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	fnameFlag            = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-	removeFirstLastFlag  = flag.Bool("remove_edges", true, "Remove first and last months as they may be incomplete")
+	removeFirstLastFlag  = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag = flag.String("filter_categories", "Mortgage,Transfer,Transfers,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 )
 
@@ -34,6 +35,7 @@ const (
 	dateColumn        = "Date"
 	categoryColumn    = "Category"
 	subcategoryColumn = "Subcategory"
+	amountColumn      = "Amount"
 )
 
 var subCategories = []string{
@@ -196,16 +198,59 @@ func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categ
 }
 
 // removeRows executes the function on the column passed and removes those rows
-func (s *Sheet) removeRows(colName string, removeFn func(string) bool) error {
+func (s *Sheet) removeRows(colName string, removeFn func(string) bool) (int, error) {
 	colNameIndex := s.colIndex(colName)
 	if colNameIndex < 0 {
-		return fmt.Errorf("column %q not found", colName)
+		return 0, fmt.Errorf("column %q not found", colName)
 	}
+	count := 0
 	deleteFn := func(row []string) bool {
-		return removeFn(row[colNameIndex])
+		toRemove := removeFn(row[colNameIndex])
+		if toRemove {
+			count++
+		}
+		return toRemove
 	}
 	s.rows = slices.DeleteFunc(s.rows, deleteFn)
-	return nil
+	return count, nil
+}
+
+// removeFn executes the function on the column passed and removes those rows
+func (s *Sheet) removeFn(removeFn func([]string) bool) (int, error) {
+	count := 0
+	deleteFn := func(row []string) bool {
+		toRemove := removeFn(row)
+		if toRemove {
+			count++
+		}
+		return toRemove
+	}
+	s.rows = slices.DeleteFunc(s.rows, deleteFn)
+	return count, nil
+}
+
+func (s *Sheet) removeIfFn(row []string) bool {
+	subCategory := row[s.colIndex(subcategoryColumn)]
+	amount, err := strconv.ParseFloat(row[s.colIndex(amountColumn)], 64)
+	if err != nil {
+		fmt.Printf("Unable to parse Amount %v\n", err)
+		return false
+	}
+
+	if amount >= 0 {
+		// Remove all income
+		return true
+	}
+	if subCategory == "Auto" {
+		// Remove large Auto payment
+		return amount < -10000
+	}
+	if subCategory == "Boat" {
+		// Remove large Boat payments
+		return amount <= -3000
+	}
+
+	return false // keep row
 }
 
 // dateToMonth searches for `colName` and adds `newColName` to the right
@@ -233,9 +278,11 @@ func (s *Sheet) mapToNewCol(colName, newColName string, mapFn func(string) strin
 func (s *Sheet) removeFirstAndLastMonths() error {
 	startMonth := s.getValue(yyyyMmColumn, 1)
 	lastMonth := s.getValue(yyyyMmColumn, len(s.rows)-1)
-	return s.removeRows(yyyyMmColumn, func(txt string) bool {
+	count, err := s.removeRows(yyyyMmColumn, func(txt string) bool {
 		return txt == startMonth || txt == lastMonth
 	})
+	fmt.Printf("Removed %d rows from start and end of list\n", count)
+	return err
 }
 
 func mapDateToYYYYMM(txt string) string {
@@ -294,9 +341,17 @@ func main() {
 	removeRowFn := func(txt string) bool {
 		return slices.Contains(filterCategories, txt)
 	}
-	if err := sheet.removeRows(categoryColumn, removeRowFn); err != nil {
+	if count, err := sheet.removeRows(subcategoryColumn, removeRowFn); err != nil {
 		fmt.Printf("removeRows err %v\n", err)
 		return
+	} else {
+		fmt.Printf("Removed %d rows because of category filter %s\n", count, *filterCategoriesFlag)
+	}
+	if count, err := sheet.removeFn(sheet.removeIfFn); err != nil {
+		fmt.Printf("removeFn err %v\n", err)
+		return
+	} else {
+		fmt.Printf("Removed %d rows because of special function\n", count)
 	}
 
 	fmt.Printf("%d rows\n", len(sheet.rows))
