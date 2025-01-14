@@ -349,8 +349,10 @@ func (s *Sheet) removeIfFn(row []string) (bool, error) {
 	if subCategory == "Transfer" {
 		merchant := row[s.colIndex(merchantColumn)]
 		if strings.HasPrefix(merchant, "Paypal") || strings.HasPrefix(merchant, "Send E Transfer") {
+			// Keep these
 			return false, nil
 		}
+		// Remove most transfers
 		return true, nil
 	}
 
