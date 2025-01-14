@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -19,9 +20,10 @@ type Sheet struct {
 
 var (
 	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-	fnameFlag            = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-	removeFirstLastFlag  = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
-	filterCategoriesFlag = flag.String("filter_categories", "Mortgage,Transfer,Transfers,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
+	fnameFlag              = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
+	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
+	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
 )
 
 type Categories struct {
@@ -33,6 +35,7 @@ type Categories struct {
 const (
 	yyyyMmColumn      = "YYYYMM"
 	dateColumn        = "Date"
+	merchantColumn    = "Merchant"
 	categoryColumn    = "Category"
 	subcategoryColumn = "Subcategory"
 	amountColumn      = "Amount"
@@ -45,8 +48,7 @@ var subCategories = []string{
 	"Business Income",
 	"Other Income",
 	"Dividends & Capital Gains",
-	">Expenses",
-	"Gifts & Donations",
+	">Gifts & Donations",
 	"Charity",
 	"Gifts",
 	">Auto & Transport",
@@ -123,6 +125,98 @@ var subCategories = []string{
 	"Balance Adjustments",
 }
 
+// mySubCategories is a slightly different grouping of Categories
+// Ex. I separate out Groceries from Restaurants
+// Yacht is a new category that has only Boat
+// Travel and Lifestyle are separated
+var mySubCategories = []string{
+	">Income",
+	"Paychecks",
+	"Interest",
+	"Business Income",
+	"Other Income",
+	"Dividends & Capital Gains",
+	">Gifts & Donations",
+	"Charity",
+	"Gifts",
+	">Auto & Transport",
+	"Auto Payment",
+	"Public Transit",
+	"Auto",
+	"Auto Maintenance",
+	"Parking & Tolls",
+	"Taxi & Ride Shares",
+	">House",
+	"Mortgage",
+	"Home Improvement",
+	"Rent",
+	"Furniture & Housewares",
+	">Bills & Utilities",
+	"Garbage",
+	"Water",
+	"Gas & Electric",
+	"Internet & Cable",
+	"Phone",
+	"Misc",
+	">Groceries",
+	"Groceries",
+	"Alcohol",
+	">Restaurants",
+	"Restaurants & Bars",
+	"Coffee Shops",
+	">Travel",
+	"Travel & Vacation",
+	">Lifestyle",
+	"Entertainment & Recreation",
+	"Personal",
+	"Pets",
+	"Fun Money",
+	"Hobbies",
+	">Boat",
+	"Boat",
+	">Shopping",
+	"Shopping",
+	"Clothing",
+	"Electronics",
+	">Children",
+	"Child Activities",
+	"Child Care",
+	"Education",
+	"Student Loans",
+	"Education",
+	">Health & Wellness",
+	"Medical",
+	"Dentist",
+	"Fitness",
+	"Tennis",
+	">Financial",
+	"Loan Repayment",
+	"Financial & Legal Services",
+	"Financial Fees",
+	"Insurance",
+	"Taxes",
+	">Cash",
+	"Cash & ATM",
+	">Other",
+	"Uncategorized",
+	"Check",
+	"Miscellaneous",
+	">Business",
+	"Advertising & Promotion",
+	"Business Utilities & Communication",
+	"Employee Wages & Contract Labor",
+	"Business Travel & Meals",
+	"Business Auto Expenses",
+	"Business Insurance",
+	"Office Supplies & Expenses",
+	"Office Rent",
+	"Postage & Shipping",
+	">Transfers",
+	"Transfer",
+	"Credit Card Payment",
+	"Balance Adjustments",
+}
+
 func importFile(fname string) (*Sheet, error) {
 	f, err := os.Open(fname)
 	if err != nil {
@@ -166,7 +260,7 @@ func (s *Sheet) getValue(colName string, row int) string {
 
 // addSubCategories searches `colName` and adds `newColName`
 // to the left which will be the parent category
-func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categories) error {
+func (s *Sheet) addSubCategories(colName, newColName string, subCats Categories) error {
 	colNameIndex := s.colIndex(colName)
 	newColIndex := colNameIndex + 1
 	if colNameIndex < 0 {
@@ -182,11 +276,11 @@ func (s *Sheet) addSubCategories(colName, newColName string, subCategories Categ
 		if category == "" {
 			return fmt.Errorf("Missing category in line %d, %d, %#v", i+1, colNameIndex, row)
 		}
-		if subCategories.ParentCategories[category] {
+		if subCats.ParentCategories[category] {
 			s.rows[i][colNameIndex] = category
 			s.rows[i][newColIndex] = category
 		} else {
-			parent := subCategories.SubCategoriesToParent[category]
+			parent := subCats.SubCategoriesToParent[category]
 			if parent == "" {
 				return fmt.Errorf("missing parent for category %q", category)
 			}
@@ -203,54 +297,64 @@ func (s *Sheet) removeRows(colName string, removeFn func(string) bool) (int, err
 	if colNameIndex < 0 {
 		return 0, fmt.Errorf("column %q not found", colName)
 	}
-	count := 0
-	deleteFn := func(row []string) bool {
-		toRemove := removeFn(row[colNameIndex])
-		if toRemove {
-			count++
-		}
-		return toRemove
+	updatedRemoveFn := func(row []string) (bool, error) {
+		return removeFn(row[colNameIndex]), nil
 	}
-	s.rows = slices.DeleteFunc(s.rows, deleteFn)
-	return count, nil
+	return s.removeFn(updatedRemoveFn)
 }
 
 // removeFn executes the function on the column passed and removes those rows
-func (s *Sheet) removeFn(removeFn func([]string) bool) (int, error) {
+func (s *Sheet) removeFn(removeFn func([]string) (bool, error)) (int, error) {
 	count := 0
+	line := 0
+	errs := []error{}
 	deleteFn := func(row []string) bool {
-		toRemove := removeFn(row)
+		line++
+		if line == 1 {
+			return false
+		}
+		toRemove, err := removeFn(row)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error in line %d: %v\n", line, err))
+			return false
+		}
 		if toRemove {
 			count++
 		}
 		return toRemove
 	}
 	s.rows = slices.DeleteFunc(s.rows, deleteFn)
-	return count, nil
+	return count, errors.Join(errs...)
 }
 
-func (s *Sheet) removeIfFn(row []string) bool {
+func (s *Sheet) removeIfFn(row []string) (bool, error) {
 	subCategory := row[s.colIndex(subcategoryColumn)]
 	amount, err := strconv.ParseFloat(row[s.colIndex(amountColumn)], 64)
 	if err != nil {
-		fmt.Printf("Unable to parse Amount %v\n", err)
-		return false
+		return false, fmt.Errorf("Unable to parse Amount %v", err)
 	}
 
 	if amount >= 0 {
 		// Remove all income
-		return true
+		return true, nil
 	}
 	if subCategory == "Auto" {
 		// Remove large Auto payment
-		return amount < -10000
+		return amount < -10000, nil
 	}
 	if subCategory == "Boat" {
 		// Remove large Boat payments
-		return amount <= -3000
+		return amount <= -3000, nil
+	}
+	if subCategory == "Transfer" {
+		merchant := row[s.colIndex(merchantColumn)]
+		if strings.HasPrefix(merchant, "Paypal") || strings.HasPrefix(merchant, "Send E Transfer") {
+			return false, nil
+		}
+		return true, nil
 	}
 
-	return false // keep row
+	return false, nil // keep row
 }
 
 // dateToMonth searches for `colName` and adds `newColName` to the right
@@ -292,11 +396,11 @@ func mapDateToYYYYMM(txt string) string {
 	return txt[0:7]
 }
 
-func initCategories(subCategories []string) Categories {
+func initCategories(subCats []string) Categories {
 	parents := map[string]bool{}
 	children := map[string]string{}
 	parent := ""
-	for _, cat := range subCategories {
+	for _, cat := range subCats {
 		if strings.HasPrefix(cat, ">") {
 			parent = cat[1:]
 			parents[parent] = true
@@ -305,7 +409,7 @@ func initCategories(subCategories []string) Categories {
 		}
 	}
 	return Categories{
-		db:                    subCategories,
+		db:                    subCats,
 		ParentCategories:      parents,
 		SubCategoriesToParent: children,
 	}
@@ -314,7 +418,11 @@ func initCategories(subCategories []string) Categories {
 func main() {
 	flag.Parse()
 	filterCategories := strings.Split(*filterCategoriesFlag, ",")
+
 	categories := initCategories(subCategories)
+	if *useMySubCategoriesFlag {
+		categories = initCategories(mySubCategories)
+	}
 
 	fmt.Printf("Importing %s\n", *fnameFlag)
 	sheet, err := importFile(*fnameFlag)
