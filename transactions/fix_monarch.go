@@ -24,6 +24,7 @@ var (
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
+	dumpCategories = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
 )
 
 type Categories struct {
@@ -421,6 +422,18 @@ func initCategories(subCats []string) Categories {
 	}
 }
 
+func (c Categories) Dump() {
+	for name, _ := range c.ParentCategories {
+		children := []string{}
+		for child, parent := range c.SubCategoriesToParent {
+			if parent == name {
+				children = append(children, child)
+			}
+		}
+		fmt.Printf(" %s\t%s\n", name, strings.Join(children, ", "))
+	}
+}
+
 func main() {
 	flag.Parse()
 	filterCategories := strings.Split(*filterCategoriesFlag, ",")
@@ -428,6 +441,10 @@ func main() {
 	categories := initCategories(subCategories)
 	if *useMySubCategoriesFlag {
 		categories = initCategories(mySubCategories)
+	}
+	if *dumpCategories {
+		categories.Dump()
+		return
 	}
 
 	fmt.Printf("Importing %s\n", *fnameFlag)
