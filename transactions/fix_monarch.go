@@ -20,7 +20,7 @@ type Sheet struct {
 
 var (
 	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-	fnameFlag              = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+	fnameFlag              = flag.String("f", "~/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
@@ -48,6 +48,7 @@ var subCategories = []string{
 	"Business Income",
 	"Other Income",
 	"Dividends & Capital Gains",
+	"Sales",
 	">Gifts & Donations",
 	"Charity",
 	"Gifts",
@@ -137,6 +138,7 @@ var mySubCategories = []string{
 	"Business Income",
 	"Other Income",
 	"Dividends & Capital Gains",
+	"Sales",
 	">Gifts & Donations",
 	"Charity",
 	"Gifts",
@@ -219,7 +221,12 @@ var mySubCategories = []string{
 	"Balance Adjustments",
 }
 
+func expandEnv(fname string) string {
+	return os.ExpandEnv(strings.ReplaceAll(fname, "~", "$HOME"))
+}
+
 func importFile(fname string) (*Sheet, error) {
+	fname = expandEnv(fname)
 	f, err := os.Open(fname)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read input file "+fname, err)
@@ -235,6 +242,7 @@ func importFile(fname string) (*Sheet, error) {
 }
 
 func (s *Sheet) writeFile(fname string) error {
+	fname = expandEnv(fname)
 	f, err := os.Create(fname)
 	if err != nil {
 		return err
