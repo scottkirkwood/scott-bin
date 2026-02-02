@@ -24,7 +24,7 @@ var (
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
-	dumpCategories = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
+	dumpCategories         = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
 )
 
 type Categories struct {
@@ -101,6 +101,7 @@ var subCategories = []string{
 	"Dentist",
 	"Fitness",
 	"Tennis",
+	"Golf",
 	">Financial",
 	"Loan Repayment",
 	"Financial & Legal Services",
@@ -194,6 +195,7 @@ var mySubCategories = []string{
 	"Dentist",
 	"Fitness",
 	"Tennis",
+	"Golf",
 	">Financial",
 	"Loan Repayment",
 	"Financial & Legal Services",
