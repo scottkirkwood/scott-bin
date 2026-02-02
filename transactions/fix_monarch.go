@@ -20,10 +20,11 @@ type Sheet struct {
 
 var (
 	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
-	fnameFlag              = flag.String("f", "/usr/local/google/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
+	fnameFlag              = flag.String("f", "~/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
+	dumpCategories = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
 )
 
 type Categories struct {
@@ -221,7 +222,12 @@ var mySubCategories = []string{
 	"Balance Adjustments",
 }
 
+func expandEnv(fname string) string {
+	return os.ExpandEnv(strings.ReplaceAll(fname, "~", "$HOME"))
+}
+
 func importFile(fname string) (*Sheet, error) {
+	fname = expandEnv(fname)
 	f, err := os.Open(fname)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read input file "+fname, err)
@@ -237,6 +243,7 @@ func importFile(fname string) (*Sheet, error) {
 }
 
 func (s *Sheet) writeFile(fname string) error {
+	fname = expandEnv(fname)
 	f, err := os.Create(fname)
 	if err != nil {
 		return err
@@ -421,6 +428,18 @@ func initCategories(subCats []string) Categories {
 	}
 }
 
+func (c Categories) Dump() {
+	for name, _ := range c.ParentCategories {
+		children := []string{}
+		for child, parent := range c.SubCategoriesToParent {
+			if parent == name {
+				children = append(children, child)
+			}
+		}
+		fmt.Printf(" %s\t%s\n", name, strings.Join(children, ", "))
+	}
+}
+
 func main() {
 	flag.Parse()
 	filterCategories := strings.Split(*filterCategoriesFlag, ",")
@@ -428,6 +447,10 @@ func main() {
 	categories := initCategories(subCategories)
 	if *useMySubCategoriesFlag {
 		categories = initCategories(mySubCategories)
+	}
+	if *dumpCategories {
+		categories.Dump()
+		return
 	}
 
 	fmt.Printf("Importing %s\n", *fnameFlag)
