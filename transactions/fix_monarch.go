@@ -16,13 +16,15 @@ import (
 type Sheet struct {
 	fname string
 	rows  [][]string
+	filterMerchants []string
 }
 
 var (
 	// fnameFlag = flag.String("f", "/home/scottkirkwood/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	fnameFlag              = flag.String("f", "~/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
-	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment", "Categories to remove, comma separated")
+	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment,Loan Repayment", "Categories to remove, comma separated")
+	filterMerchantsFlag = flag.String("filter_merchants", "Otis,Abv Management Inc,Lifestyle Home Products,Helmutz Landscape", "Remove these merchants (ex. Otis)")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
 	dumpCategories         = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
 )
@@ -342,6 +344,7 @@ func (s *Sheet) removeFn(removeFn func([]string) (bool, error)) (int, error) {
 
 func (s *Sheet) removeIfFn(row []string) (bool, error) {
 	subCategory := row[s.colIndex(subcategoryColumn)]
+	merchant := row[s.colIndex(merchantColumn)]
 	amount, err := strconv.ParseFloat(row[s.colIndex(amountColumn)], 64)
 	if err != nil {
 		return false, fmt.Errorf("Unable to parse Amount %v", err)
@@ -359,8 +362,10 @@ func (s *Sheet) removeIfFn(row []string) (bool, error) {
 		// Remove large Boat payments
 		return amount <= -3000, nil
 	}
+	if slices.Contains(s.filterMerchants, merchant) {
+		return true, nil
+	}
 	if subCategory == "Transfer" {
-		merchant := row[s.colIndex(merchantColumn)]
 		if strings.HasPrefix(merchant, "Paypal") || strings.HasPrefix(merchant, "Send E Transfer") {
 			// Keep these
 			return false, nil
@@ -461,6 +466,7 @@ func main() {
 		fmt.Printf("err %v\n", err)
 		return
 	}
+	sheet.filterMerchants = strings.Split(*filterMerchantsFlag, ",")
 
 	if err := sheet.mapToNewCol(dateColumn, yyyyMmColumn, mapDateToYYYYMM); err != nil {
 		fmt.Printf("mapToNewCol err %v\n", err)
@@ -477,10 +483,10 @@ func main() {
 		return
 	}
 
-	removeRowFn := func(txt string) bool {
+	removeSubcategoryRowFn := func(txt string) bool {
 		return slices.Contains(filterCategories, txt)
 	}
-	if count, err := sheet.removeRows(subcategoryColumn, removeRowFn); err != nil {
+	if count, err := sheet.removeRows(subcategoryColumn, removeSubcategoryRowFn); err != nil {
 		fmt.Printf("removeRows err %v\n", err)
 		return
 	} else {
