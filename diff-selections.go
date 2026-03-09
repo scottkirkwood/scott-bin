@@ -1,5 +1,5 @@
 // Compare dpkg --selections between two machines
-// Packages with common prefixes are grouped and summarized if you want to see them call with -expand
+// Packages with common prefixes are grouped and summarized. If you want to see them, call with -expand <prefix>
 package main
 
 import (
@@ -15,13 +15,14 @@ import (
 
 var (
 	oldFile = flag.String("old", "", "Path to the old selections file (from dpkg --get-selections)")
+	newFile = flag.String("new", "", "Path to the current selections file (optional, defaults to running dpkg --get-selections)")
 	expand  = flag.String("expand", "", "Comma-separated list of prefixes to expand (e.g. 'lib,gcc')")
 )
 
 func main() {
 	flag.Parse()
 	if *oldFile == "" {
-		fmt.Println("Usage: diff-selections -old <old-selections.txt> [-expand <prefix1,prefix2>]")
+		fmt.Println("Usage: diff-selections -old <old-selections.txt> [-new <current-selections.txt>] [-expand <prefix1,prefix2>]")
 		os.Exit(1)
 	}
 
@@ -31,7 +32,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	currentSelections, err := getCurrentSelections()
+	var currentSelections map[string]string
+	if *newFile != "" {
+		currentSelections, err = readSelectionsFile(*newFile)
+	} else {
+		currentSelections, err = getCurrentSelections()
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting current selections: %v\n", err)
 		os.Exit(1)
@@ -77,13 +83,12 @@ func main() {
 					fmt.Printf("%s\n", pkg)
 				}
 			}
-			continue
-		}
-
-		if len(pkgs) > 1 {
-			fmt.Printf("%s* (%d packages)\n", p, len(pkgs))
 		} else {
-			fmt.Printf("%s\n", pkgs[0])
+			if len(pkgs) > 1 {
+				fmt.Printf("%s* (%d packages)\n", p, len(pkgs))
+			} else {
+				fmt.Printf("%s\n", pkgs[0])
+			}
 		}
 	}
 }
