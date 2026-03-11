@@ -14,8 +14,8 @@ import (
 
 // Sheet contains a spreadsheet
 type Sheet struct {
-	fname string
-	rows  [][]string
+	fname           string
+	rows            [][]string
 	filterMerchants []string
 }
 
@@ -24,7 +24,7 @@ var (
 	fnameFlag              = flag.String("f", "~/Downloads/monarch-transactions.csv", "Import Monarch filename")
 	removeFirstLastFlag    = flag.Bool("remove_first_last", true, "Remove first and last months as they may be incomplete")
 	filterCategoriesFlag   = flag.String("filter_categories", "Mortgage,Paychecks,Credit Card Payment,Loan Repayment", "Categories to remove, comma separated")
-	filterMerchantsFlag = flag.String("filter_merchants", "Otis,Abv Management Inc,Lifestyle Home Products,Helmutz Landscape", "Remove these merchants (ex. Otis)")
+	filterMerchantsFlag    = flag.String("filter_merchants", "Otis,Abv Management Inc,Lifestyle Home Products,Helmutz Landscape,CANADA TXD", "Remove these merchants (ex. Otis)")
 	useMySubCategoriesFlag = flag.Bool("use_my_subcategories", true, "Use my categories instead of Monarch's")
 	dumpCategories         = flag.Bool("dump_categories", false, "Just dump the categories to put in spreadsheet")
 )
