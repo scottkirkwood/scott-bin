@@ -84,7 +84,7 @@ func main() {
 				}
 			}
 		} else {
-			if len(pkgs) > 1 {
+			if len(pkgs) > 2 {
 				fmt.Printf("%s* (%d packages)\n", p, len(pkgs))
 			} else {
 				fmt.Printf("%s\n", pkgs[0])
