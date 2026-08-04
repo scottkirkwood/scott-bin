@@ -90,3 +90,59 @@ Test redirect in terminal:
 curl -I http://f/assets
 ```
 *(Should return `HTTP/1.1 307 Temporary Redirect` pointing to `https://forusers.com/assets`)*
+
+---
+
+## 6. Disabling the Service
+
+To temporarily stop and disable the service without removing files:
+
+```bash
+sudo systemctl stop forusers-redirect.service
+sudo systemctl disable forusers-redirect.service
+```
+
+To re-enable it later:
+
+```bash
+sudo systemctl enable --now forusers-redirect.service
+```
+
+---
+
+## 7. Uninstalling the Service
+
+You can run the included uninstall script or perform the steps manually:
+
+### Option A: Run `uninstall.sh`
+```bash
+./uninstall.sh
+```
+
+### Option B: Manual Uninstallation
+
+#### 1. Stop and disable the systemd service
+```bash
+sudo systemctl stop forusers-redirect.service
+sudo systemctl disable forusers-redirect.service
+```
+
+#### 2. Remove the systemd service file and reload daemon
+```bash
+sudo rm -f /etc/systemd/system/forusers-redirect.service
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+```
+
+#### 3. Delete the binary
+```bash
+rm -f ~/.local/bin/forusers-redirect
+```
+
+#### 4. (Optional) Remove `/etc/hosts` entry
+Edit `/etc/hosts` to remove the host shortcuts (`f`, `go`, etc.):
+
+```bash
+sudo nvim /etc/hosts
+```
+
